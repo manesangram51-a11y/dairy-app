@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-st.set_page_config(page_title="Dairy Milk Collection", page_icon="🥛", layout="wide")
+st.set_page_config(page_title="Mane Dairy Collection System", page_icon="🥛", layout="wide")
 
 # Initialize session state for entries
 if "entries" not in st.session_state:
