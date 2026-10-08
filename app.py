@@ -1,120 +1,115 @@
-import datetime
-import pandas as pd
 import streamlit as st
+import pandas as pd
+from datetime import datetime
 
-st.set_page_config(
-    page_title="Dairy Farmer Collection & Billing", layout="wide"
-)
+st.set_page_config(page_title="Dairy Milk Collection", page_icon="🥛", layout="wide")
+
+# Initialize session state for entries
+if "entries" not in st.session_state:
+    st.session_state.entries = []
+
 st.title("🥛 Dairy Milk Collection & Billing System")
 
-# Data storage (In-memory / Database mock)
-if "collection_data" not in st.session_state:
-  st.session_state.collection_data = []
+# --- SIDEBAR : RATE CHART SETTINGS ---
+st.sidebar.header("⚙️ Rate Chart Settings")
 
+animal_type = st.sidebar.radio("Select Settings For", ["Cow Settings", "Buffalo Settings"])
 
-# Rate Calculation Logic
-def calculate_rate(animal, fat, snf):
-  if animal == "Cow":
-    # Cow Ranges: FAT 2.5 - 5.2 | SNF 8.0 - 9.0
-    if 2.5 <= fat <= 5.2 and 8.0 <= snf <= 9.0:
-      rate = (fat * 6.5) + (snf * 4.0)  # Standard Rate Matrix
-      return round(rate, 2)
-    else:
-      return round((fat * 6.0) + (snf * 3.5), 2)  # Default/Out of range
-
-  elif animal == "Buffalo":
-    # Buffalo Ranges: FAT 5.5 - 11.0 | SNF 9.0 - 9.5
-    if 5.5 <= fat <= 11.0 and 9.0 <= snf <= 9.5:
-      rate = (fat * 7.5) + (snf * 4.5)
-      return round(rate, 2)
-    else:
-      return round((fat * 7.0) + (snf * 4.0), 2)
-
-
-# Payment Cycle Logic (10 Days Period)
-def get_payment_cycle(date_obj):
-  day = date_obj.day
-  year = date_obj.year
-  month = date_obj.strftime("%B")
-
-  if 1 <= day <= 10:
-    return f"Period 1 (1 to 10 {month} {year})"
-  elif 11 <= day <= 20:
-    return f"Period 2 (11 to 20 {month} {year})"
-  else:
-    return f"Period 3 (21 to End {month} {year})"
-
-
-# --- SIDEBAR: ENTRY FORM ---
-st.sidebar.header("📥 Daily Collection Entry")
-
-farmer_id = st.sidebar.text_input("Farmer ID / Name", "Kisan 1")
-entry_date = st.sidebar.date_input("Date", datetime.date.today())
-shift = st.sidebar.selectbox("Shift", ["Morning", "Evening"])
-animal = st.sidebar.selectbox("Animal Type", ["Cow", "Buffalo"])
-
-quantity = st.sidebar.number_input(
-    "Quantity (Liters)", min_value=0.1, value=10.0, step=0.5
-)
-
-if animal == "Cow":
-  fat = st.sidebar.slider(
-      "FAT (%)", min_value=2.5, max_value=5.2, value=3.5, step=0.1
-  )
-  snf = st.sidebar.slider(
-      "SNF (%)", min_value=8.0, max_value=9.0, value=8.5, step=0.1
-  )
+if animal_type == "Cow Settings":
+    st.sidebar.subheader("🐮 Cow Rate Parameters")
+    cow_base_rate = st.sidebar.number_input("Cow Base Rate (for 3.5 FAT / 8.5 SNF)", min_value=1.0, max_value=100.0, value=35.0, step=0.5)
+    cow_fat_step = st.sidebar.slider("Cow FAT Diff Rate per 0.1% (₹0.10 - ₹0.50)", min_value=0.10, max_value=0.50, value=0.30, step=0.05)
+    cow_snf_step = st.sidebar.slider("Cow SNF Diff Rate per 0.1% (₹0.10 - ₹0.50)", min_value=0.10, max_value=0.50, value=0.20, step=0.05)
+    buff_base_rate = 60.0
+    buff_fat_step = 0.50
+    buff_snf_step = 0.30
 else:
-  fat = st.sidebar.slider(
-      "FAT (%)", min_value=5.5, max_value=11.0, value=6.5, step=0.1
-  )
-  snf = st.sidebar.slider(
-      "SNF (%)", min_value=9.0, max_value=9.5, value=9.0, step=0.1
-  )
+    st.sidebar.subheader("🦬 Buffalo Rate Parameters")
+    buff_base_rate = st.sidebar.number_input("Buffalo Base Rate (for 6.0 FAT / 9.0 SNF)", min_value=1.0, max_value=200.0, value=60.0, step=0.5)
+    buff_fat_step = st.sidebar.slider("Buffalo FAT Diff Rate per 0.1% (₹0.10 - ₹0.80)", min_value=0.10, max_value=0.80, value=0.50, step=0.05)
+    buff_snf_step = st.sidebar.slider("Buffalo SNF Diff Rate per 0.1% (₹0.10 - ₹0.80)", min_value=0.10, max_value=0.80, value=0.30, step=0.05)
+    cow_base_rate = 35.0
+    cow_fat_step = 0.30
+    cow_snf_step = 0.20
 
-calculated_rate = calculate_rate(animal, fat, snf)
-total_amount = round(quantity * calculated_rate, 2)
-cycle = get_payment_cycle(entry_date)
+st.sidebar.markdown("---")
+st.sidebar.header("📝 Daily Milk Entry")
 
-st.sidebar.info(f"**Calculated Rate:** ₹{calculated_rate} / Liter")
-st.sidebar.success(f"**Total Amount:** ₹{total_amount}")
+farmer_name = st.sidebar.text_input("Farmer Name / Code")
+shift = st.sidebar.selectbox("Shift", ["Morning", "Evening"])
+selected_animal = st.sidebar.selectbox("Animal", ["Cow", "Buffalo"])
+liters = st.sidebar.number_input("Liters", min_value=0.1, max_value=500.0, value=5.0, step=0.5)
+
+# Input ranges based on animal
+if selected_animal == "Cow":
+    fat = st.sidebar.number_input("FAT % (Cow)", min_value=2.0, max_value=10.0, value=3.5, step=0.1)
+    snf = st.sidebar.number_input("SNF % (Cow)", min_value=6.0, max_value=12.0, value=8.5, step=0.1)
+else:
+    fat = st.sidebar.number_input("FAT % (Buffalo)", min_value=3.0, max_value=15.0, value=6.0, step=0.1)
+    snf = st.sidebar.number_input("SNF % (Buffalo)", min_value=6.0, max_value=12.0, value=9.0, step=0.1)
+
+date_entry = st.sidebar.date_input("Date", datetime.today())
+
+# --- RATE CALCULATION ENGINE ---
+def calculate_standard_rate(animal, fat_val, snf_val):
+    if animal == "Cow":
+        base_fat, base_snf = 3.5, 8.5
+        base_rate = cow_base_rate
+        fat_diff_rate = cow_fat_step
+        snf_diff_rate = cow_snf_step
+    else:
+        base_fat, base_snf = 6.0, 9.0
+        base_rate = buff_base_rate
+        fat_diff_rate = buff_fat_step
+        snf_diff_rate = buff_snf_step
+
+    # Calculate differences in steps of 0.1%
+    fat_diff = round((fat_val - base_fat) * 10, 2)
+    snf_diff = round((snf_val - base_snf) * 10, 2)
+
+    final_rate = base_rate + (fat_diff * fat_diff_rate) + (snf_diff * snf_diff_rate)
+    return max(0.0, round(final_rate, 2))
+
+calculated_rate = calculate_standard_rate(selected_animal, fat, snf)
+total_amount = round(calculated_rate * liters, 2)
+
+st.sidebar.info(f"💡 **Rate/Liter:** ₹{calculated_rate}\n\n💰 **Total Amount:** ₹{total_amount}")
 
 if st.sidebar.button("Save Entry"):
-  entry = {
-      "Date": entry_date,
-      "Farmer": farmer_id,
-      "Shift": shift,
-      "Animal": animal,
-      "Qty (L)": quantity,
-      "FAT": fat,
-      "SNF": snf,
-      "Rate/L": calculated_rate,
-      "Total (₹)": total_amount,
-      "Billing Cycle": cycle,
-  }
-  st.session_state.collection_data.append(entry)
-  st.sidebar.success("Entry Saved Successfully!")
+    if farmer_name.strip() != "":
+        st.session_state.entries.append({
+            "Date": date_entry.strftime("%Y-%m-%d"),
+            "Farmer": farmer_name,
+            "Shift": shift,
+            "Animal": selected_animal,
+            "Liters": liters,
+            "FAT": fat,
+            "SNF": snf,
+            "Rate/L": calculated_rate,
+            "Total Amount": total_amount
+        })
+        st.sidebar.success("Entry Saved Successfully!")
+    else:
+        st.sidebar.error("Please enter Farmer Name!")
 
-# --- MAIN DASHBOARD & REPORTS ---
-col1, col2 = st.columns(2)
+# --- MAIN DASHBOARD ---
+st.subheader("📋 Collection History")
 
-with col1:
-  st.subheader("📋 Collection History")
-  if st.session_state.collection_data:
-    df = pd.DataFrame(st.session_state.collection_data)
+if st.session_state.entries:
+    df = pd.DataFrame(st.session_state.entries)
     st.dataframe(df, use_container_width=True)
-  else:
-    st.write("No collection entries yet.")
-
-with col2:
-  st.subheader("💰 10-Day Payment Summary")
-  if st.session_state.collection_data:
-    df = pd.DataFrame(st.session_state.collection_data)
-    summary = (
-        df.groupby(["Farmer", "Billing Cycle"])[["Qty (L)", "Total (₹)"]]
-        .sum()
-        .reset_index()
-    )
-    st.dataframe(summary, use_container_width=True)
-  else:
-    st.write("Summary will appear here.")
+    
+    st.markdown("---")
+    st.subheader("💰 10-Day Payment Summary")
+    
+    summary = df.groupby("Farmer").agg(
+        Total_Liters=("Liters", "sum"),
+        Total_Payment=("Total Amount", "sum")
+    ).reset_index()
+    
+    st.table(summary)
+    
+    csv = df.to_csv(index=False).encode('utf-8')
+    st.download_button("📥 Download Excel/CSV Report", data=csv, file_name="milk_collection_report.csv", mime="text/csv")
+else:
+    st.info("No collection entries yet. Use the sidebar to add entries.")
